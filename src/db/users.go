@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"net/http"
+	"net/mail"
 	"strings"
 
 	"github.com/joshk418/golactus"
@@ -16,6 +17,29 @@ type User struct {
 	EmailAddress string `json:"emailAddress"`
 	Password     string `json:"password,omitempty"`
 	CommonValues
+}
+
+func (u *User) Validate() error {
+	var messages []string
+
+	if strings.TrimSpace(u.FirstName) == "" || strings.TrimSpace(u.LastName) == "" {
+		messages = append(messages, "First Name or Last Name is invalid")
+	}
+
+	if _, err := mail.ParseAddress(u.EmailAddress); err != nil {
+		messages = append(messages, "Email Address is invalid")
+	}
+
+	// todo: add more password validation
+	if len(u.Password) < 8 {
+		messages = append(messages, "Password is invalid")
+	}
+
+	if len(messages) > 0 {
+		return golactus.NewError(http.StatusBadRequest, strings.Join(messages, ";"))
+	}
+
+	return nil
 }
 
 func (s *Service) UserByID(ctx context.Context, id int) (*User, error) {

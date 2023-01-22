@@ -13,13 +13,20 @@ type UserToken struct {
 	UserTokenID int    `json:"userTokenID"`
 	UserID      int    `json:"userID"`
 	AuthUUID    string `json:"authUUID"`
+	Type        string `json:"type"`
 }
+
+const (
+	RefreshType     = "refresh"
+	AccessTokenType = "access"
+)
 
 func (s *Service) UserTokenByUserIDAndAuthUUID(ctx context.Context, userID int, uuid string) (*UserToken, error) {
 	row := s.db.QueryRowContext(ctx, "select "+
 		"user_token_id, "+
 		"user_id, "+
-		"auth_uuid "+
+		"auth_uuid, "+
+		"type "+
 		"from user_tokens "+
 		"where user_id = $1 and auth_uuid = $2",
 		userID,
@@ -31,6 +38,7 @@ func (s *Service) UserTokenByUserIDAndAuthUUID(ctx context.Context, userID int, 
 		&userToken.UserTokenID,
 		&userToken.UserID,
 		&userToken.AuthUUID,
+		&userToken.Type,
 	)
 	if err != nil {
 		if strings.Contains(err.Error(), sql.ErrNoRows.Error()) {
@@ -47,7 +55,8 @@ func (s *Service) UserTokensByUserID(ctx context.Context, userID int) ([]*UserTo
 	rows, err := s.db.QueryContext(ctx, "select "+
 		"user_token_id, "+
 		"user_id, "+
-		"auth_uuid "+
+		"auth_uuid, "+
+		"type "+
 		"from user_tokens "+
 		"where user_id = $1 and auth_uuid = $2",
 		userID,
@@ -64,6 +73,7 @@ func (s *Service) UserTokensByUserID(ctx context.Context, userID int) ([]*UserTo
 			&userToken.UserTokenID,
 			&userToken.UserID,
 			&userToken.AuthUUID,
+			&userToken.Type,
 		)
 		if err != nil {
 			if strings.Contains(err.Error(), sql.ErrNoRows.Error()) {
@@ -86,7 +96,7 @@ func (s *Service) DeleteUserTokensByUserID(ctx context.Context, userID int) erro
 }
 
 func (s *Service) DeleteUserTokenByUserIDAndAuthUUID(ctx context.Context, userID int, uuid string) error {
-	if _, err := s.db.ExecContext(ctx, "delete from user_tokens where user_id = $1 and auth_uuid", userID, uuid); err != nil {
+	if _, err := s.db.ExecContext(ctx, "delete from user_tokens where user_id = $1 and auth_uuid = $2", userID, uuid); err != nil {
 		return golactus.NewError(http.StatusInternalServerError, err)
 	}
 
@@ -104,11 +114,13 @@ func (s *Service) SaveUserToken(ctx context.Context, userToken *UserToken) (int,
 func (s *Service) insertUserToken(ctx context.Context, userToken *UserToken) (int, error) {
 	row := s.db.QueryRowContext(ctx, "insert into user_tokens ("+
 		"user_id, "+
-		"auth_uuid "+
-		") values ($1, $2)"+
+		"auth_uuid, "+
+		"type "+
+		") values ($1, $2, $3)"+
 		"returning user_token_id",
 		userToken.UserID,
 		userToken.AuthUUID,
+		userToken.Type,
 	)
 
 	var userTokenID int

@@ -4,6 +4,7 @@ import (
 	"context"
 	"finance-api/src/db"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
@@ -50,6 +51,10 @@ func (s *Service) LogoutUser(ctx context.Context, emailAddress string) error {
 }
 
 func (s *Service) RegisterUser(ctx context.Context, user *db.User) error {
+	if err := user.Validate(); err != nil {
+		return err
+	}
+
 	emailUser, err := s.UserByEmailAddress(ctx, user.EmailAddress)
 	if err != nil {
 		return err
@@ -73,23 +78,44 @@ func (s *Service) RegisterUser(ctx context.Context, user *db.User) error {
 	return nil
 }
 
-type AccessTokenClaims struct {
+func (s *Service) RefreshToken(ctx context.Context, refreshToken string) (*Token, error) {
+	claims := &TokenClaims{}
+	_, err := jwt.ParseWithClaims(refreshToken, claims, func(token *jwt.Token) (interface{}, error) {
+		return s.jwtkey, nil
+	})
+	if err != nil {
+		if strings.Contains(err.Error(), jwt.ErrTokenExpired.Error()) && (claims.UserID != 0 && claims.AuthUUID != "") {
+			if err := s.DeleteUserTokenByUserIDAndAuthUUID(ctx, claims.UserID, claims.AuthUUID); err != nil {
+				return nil, golactus.NewError(http.StatusInternalServerError, err)
+			}
+		}
+
+		return nil, golactus.NewError(http.StatusUnauthorized, "Refresh token is invalid")
+	}
+
+	user, err := s.db.UserByID(ctx, claims.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.db.DeleteUserTokensByUserID(ctx, user.UserID); err != nil {
+		return nil, err
+	}
+
+	return s.generateTokenPair(ctx, user)
+}
+
+type TokenClaims struct {
 	UserID   int    `json:"userID"`
 	AuthUUID string `json:"authUUID"`
 	jwt.RegisteredClaims
 }
 
-type RefreshTokenClaims struct {
-	UserID int `json:"userID"`
-	jwt.RegisteredClaims
-}
-
 func (s *Service) generateTokenPair(ctx context.Context, user *db.User) (*Token, error) {
-	authUuid := uuid.New()
-
-	accessTokenClaims := &AccessTokenClaims{
+	accessAuthUuid := uuid.New()
+	accessTokenClaims := &TokenClaims{
 		UserID:   user.UserID,
-		AuthUUID: authUuid.String(),
+		AuthUUID: accessAuthUuid.String(),
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(15 * time.Minute)),
 		},
@@ -100,8 +126,10 @@ func (s *Service) generateTokenPair(ctx context.Context, user *db.User) (*Token,
 		return nil, err
 	}
 
-	refreshTokenClaims := &RefreshTokenClaims{
-		UserID: user.UserID,
+	refreshAuthUuid := uuid.New()
+	refreshTokenClaims := &TokenClaims{
+		UserID:   user.UserID,
+		AuthUUID: refreshAuthUuid.String(),
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
 		},
@@ -117,8 +145,13 @@ func (s *Service) generateTokenPair(ctx context.Context, user *db.User) (*Token,
 		RefreshToken: refreshToken,
 	}
 
-	userToken := &db.UserToken{UserID: user.UserID, AuthUUID: authUuid.String()}
+	userToken := &db.UserToken{UserID: user.UserID, AuthUUID: accessAuthUuid.String(), Type: db.AccessTokenType}
 	if _, err := s.db.SaveUserToken(ctx, userToken); err != nil {
+		return nil, err
+	}
+
+	userRefreshToken := &db.UserToken{UserID: user.UserID, AuthUUID: refreshAuthUuid.String(), Type: db.RefreshType}
+	if _, err := s.db.SaveUserToken(ctx, userRefreshToken); err != nil {
 		return nil, err
 	}
 

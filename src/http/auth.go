@@ -46,12 +46,12 @@ type RefreshTokenRequest struct {
 }
 
 func (s *Service) RefreshToken(w http.ResponseWriter, r *http.Request) (interface{}, error) {
-	//ctx := r.Context()
+	ctx := r.Context()
 
 	var req *RefreshTokenRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return nil, golactus.NewError(http.StatusUnprocessableEntity, "json is invalid")
 	}
 
-	return req, nil
+	return s.app.RefreshToken(ctx, req.RefreshToken)
 }

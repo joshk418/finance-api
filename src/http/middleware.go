@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	ignoredAuthUrls = []string{"/finance/auth/login", "/finance/auth/register"}
+	ignoredAuthUrls = []string{"/finance/auth/login", "/finance/auth/register", "/finance/auth/refresh"}
 )
 
 type ContextKey string
@@ -30,19 +30,20 @@ func (s *Service) CheckAuthorizationMiddleware(h http.Handler) http.Handler {
 			}
 		}
 
+		ctx := r.Context()
+
 		authHeader, code, err := parseAuthHeader(r)
 		if err != nil {
 			handleHttpError(w, code, err)
 			return
 		}
 
-		claims, code, err := s.parseAndCheckToken(authHeader)
+		claims, code, err := s.parseAndCheckToken(ctx, authHeader)
 		if err != nil {
 			handleHttpError(w, code, err)
 			return
 		}
 
-		ctx := r.Context()
 		if code, err := s.checkUserTokenRecord(ctx, claims.UserID, claims.AuthUUID); err != nil {
 			handleHttpError(w, code, err)
 			return
@@ -69,8 +70,8 @@ func (s *Service) checkUserTokenRecord(ctx context.Context, userID int, uuid str
 	return 0, nil
 }
 
-func (s *Service) parseAndCheckToken(authHeader string) (*app.AccessTokenClaims, int, error) {
-	claims := &app.AccessTokenClaims{}
+func (s *Service) parseAndCheckToken(ctx context.Context, authHeader string) (*app.TokenClaims, int, error) {
+	claims := &app.TokenClaims{}
 
 	tkn, err := jwt.ParseWithClaims(authHeader, claims, func(token *jwt.Token) (interface{}, error) {
 		return []byte(s.cfg.JwtKey), nil
@@ -78,6 +79,12 @@ func (s *Service) parseAndCheckToken(authHeader string) (*app.AccessTokenClaims,
 	if err != nil {
 		if err == jwt.ErrSignatureInvalid {
 			return nil, http.StatusUnauthorized, err
+		}
+
+		if strings.Contains(err.Error(), jwt.ErrTokenExpired.Error()) && (claims.UserID != 0 && claims.AuthUUID != "") {
+			if err := s.app.DeleteUserTokenByUserIDAndAuthUUID(ctx, claims.UserID, claims.AuthUUID); err != nil {
+				return nil, http.StatusInternalServerError, err
+			}
 		}
 
 		return nil, http.StatusBadRequest, err
