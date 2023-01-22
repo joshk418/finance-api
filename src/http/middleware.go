@@ -12,12 +12,18 @@ import (
 )
 
 var (
-	ignoredUrls = []string{"/finance/auth/login", "/finance/auth/register"}
+	ignoredAuthUrls = []string{"/finance/auth/login", "/finance/auth/register"}
+)
+
+type ContextKey string
+
+const (
+	UserIDContextKey = ContextKey("UserID")
 )
 
 func (s *Service) CheckAuthorizationMiddleware(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		for _, url := range ignoredUrls {
+		for _, url := range ignoredAuthUrls {
 			if strings.Contains(strings.ToLower(r.RequestURI), strings.ToLower(url)) {
 				h.ServeHTTP(w, r)
 				return
@@ -30,18 +36,19 @@ func (s *Service) CheckAuthorizationMiddleware(h http.Handler) http.Handler {
 			return
 		}
 
-		claims, code, err := s.parseToken(authHeader)
+		claims, code, err := s.parseAndCheckToken(authHeader)
 		if err != nil {
 			handleHttpError(w, code, err)
 			return
 		}
 
-		if code, err := s.checkUserTokenRecord(r.Context(), claims.UserID, claims.AuthUUID); err != nil {
+		ctx := r.Context()
+		if code, err := s.checkUserTokenRecord(ctx, claims.UserID, claims.AuthUUID); err != nil {
 			handleHttpError(w, code, err)
 			return
 		}
 
-		h.ServeHTTP(w, r)
+		h.ServeHTTP(w, r.WithContext(context.WithValue(ctx, UserIDContextKey, claims.UserID)))
 	})
 }
 
@@ -62,7 +69,7 @@ func (s *Service) checkUserTokenRecord(ctx context.Context, userID int, uuid str
 	return 0, nil
 }
 
-func (s *Service) parseToken(authHeader string) (*app.AccessTokenClaims, int, error) {
+func (s *Service) parseAndCheckToken(authHeader string) (*app.AccessTokenClaims, int, error) {
 	claims := &app.AccessTokenClaims{}
 
 	tkn, err := jwt.ParseWithClaims(authHeader, claims, func(token *jwt.Token) (interface{}, error) {
