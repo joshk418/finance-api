@@ -2,19 +2,28 @@ package main
 
 import (
 	httpd "finance-api/src/http"
+	"flag"
 	"os"
+	"strings"
 
 	log "github.com/sirupsen/logrus"
 
 	"github.com/BurntSushi/toml"
 )
 
+var (
+	cfgFlag = flag.String("cfg", "", "config for server")
+)
+
 func main() {
+	flag.Parse()
+
 	log.SetFormatter(&log.JSONFormatter{})
 	log.Fatal(startServer())
 }
 
 func startServer() error {
+
 	cfg, err := readConfig()
 	if err != nil {
 		return err
@@ -29,7 +38,12 @@ func startServer() error {
 }
 
 func readConfig() (*httpd.Config, error) {
-	file, err := os.ReadFile("finance-api.toml")
+	fileName := *cfgFlag
+	if !strings.Contains(fileName, ".toml") {
+		fileName += ".toml"
+	}
+
+	file, err := os.ReadFile(fileName)
 	if err != nil {
 		return nil, err
 	}
