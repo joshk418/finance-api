@@ -51,7 +51,7 @@ func (s *Service) setup() *Service {
 		golactus.Post("/auth/login", s.LoginUser),
 		golactus.Post("/auth/logout", s.LogoutUser),
 		golactus.Post("/auth/register", s.RegisterUser),
-		golactus.Post("/auth/refresh", s.RefreshToken),
+		// golactus.Post("/auth/refresh", s.RefreshToken),
 
 		golactus.Get("/users/{userID}", s.UserByID),
 	)
