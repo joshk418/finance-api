@@ -2,8 +2,13 @@ package app
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"encoding/base64"
 	"finance-api/src/db"
+	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,39 +20,56 @@ import (
 )
 
 type Token struct {
-	AccessToken  string `json:"accessToken"`
-	RefreshToken string `json:"refreshToken"`
+	AccessToken string `json:"accessToken"`
 }
 
-func (s *Service) LoginUser(ctx context.Context, user *db.User) (*Token, error) {
+func (s *Service) LoginUser(ctx context.Context, user *db.User) (*Token, string, error) {
 	hash, err := s.db.UserPasswordHashByEmailAddress(ctx, user.EmailAddress)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	if !checkPasswordHash(user.Password, hash) {
-		return nil, golactus.NewError(http.StatusBadRequest, "Invalid login credentials")
+		return nil, "", golactus.NewError(http.StatusBadRequest, "Invalid login credentials")
 	}
 
 	emailUser, err := s.db.UserByEmailAddress(ctx, user.EmailAddress)
 	if err != nil {
-		return nil, err
+		return nil, "", err
+	}
+
+	if err := s.db.DeleteRefreshTokensByUserID(ctx, emailUser.UserID); err != nil {
+		return nil, "", err
 	}
 
 	if err := s.db.DeleteUserTokensByUserID(ctx, emailUser.UserID); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	return s.generateTokenPair(ctx, emailUser)
+	refreshToken, err := s.generateRefreshToken(ctx, emailUser)
+	if err != nil {
+		return nil, "", err
+	}
+
+	accessToken, err := s.generateAccessToken(ctx, emailUser)
+	if err != nil {
+		return nil, "", err
+	}
+
+	return accessToken, refreshToken, nil
 }
 
-func (s *Service) LogoutUser(ctx context.Context, emailAddress string) error {
-	emailUser, err := s.db.UserByEmailAddress(ctx, emailAddress)
+func (s *Service) LogoutUser(ctx context.Context, userID int) error {
+	user, err := s.db.UserByID(ctx, userID)
 	if err != nil {
 		return err
 	}
 
-	return s.db.DeleteUserTokensByUserID(ctx, emailUser.UserID)
+	if err := s.db.DeleteUserTokensByUserID(ctx, user.UserID); err != nil {
+		return err
+	}
+
+	return s.db.DeleteRefreshTokensByUserID(ctx, user.UserID)
 }
 
 func (s *Service) RegisterUser(ctx context.Context, user *db.User) error {
@@ -78,31 +100,41 @@ func (s *Service) RegisterUser(ctx context.Context, user *db.User) error {
 	return nil
 }
 
-func (s *Service) RefreshToken(ctx context.Context, refreshToken string) (*Token, error) {
-	claims := &TokenClaims{}
-	_, err := jwt.ParseWithClaims(refreshToken, claims, func(token *jwt.Token) (interface{}, error) {
+func (s *Service) RefreshToken(ctx context.Context, encryptedRefreshToken string) (string, error) {
+	refreshTokenID, err := decryptTokenID(encryptedRefreshToken, s.encryptionKey)
+	if err != nil {
+		return "", err
+	}
+
+	token, err := s.db.RefreshTokenByID(ctx, refreshTokenID)
+	if err != nil {
+		return "", err
+	}
+
+	claims := &RefreshTokenClaims{}
+	_, err = jwt.ParseWithClaims(token.Token, claims, func(token *jwt.Token) (interface{}, error) {
 		return s.jwtkey, nil
 	})
 	if err != nil {
-		if strings.Contains(err.Error(), jwt.ErrTokenExpired.Error()) && (claims.UserID != 0 && claims.AuthUUID != "") {
-			if err := s.DeleteUserTokenByUserIDAndAuthUUID(ctx, claims.UserID, claims.AuthUUID); err != nil {
-				return nil, golactus.NewError(http.StatusInternalServerError, err)
+		if strings.Contains(err.Error(), jwt.ErrTokenExpired.Error()) && (refreshTokenID != 0) {
+			if err := s.db.DeleteRefreshTokenByID(ctx, claims.UserID, refreshTokenID); err != nil {
+				return "", golactus.NewError(http.StatusInternalServerError, err)
 			}
 		}
 
-		return nil, golactus.NewError(http.StatusUnauthorized, "Refresh token is invalid")
+		return "", golactus.NewError(http.StatusUnauthorized, "Refresh token is invalid")
 	}
 
 	user, err := s.db.UserByID(ctx, claims.UserID)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
-	if err := s.db.DeleteUserTokensByUserID(ctx, user.UserID); err != nil {
-		return nil, err
+	if err := s.db.DeleteRefreshTokensByUserID(ctx, user.UserID); err != nil {
+		return "", err
 	}
 
-	return s.generateTokenPair(ctx, user)
+	return s.generateRefreshToken(ctx, user)
 }
 
 type TokenClaims struct {
@@ -111,7 +143,12 @@ type TokenClaims struct {
 	jwt.RegisteredClaims
 }
 
-func (s *Service) generateTokenPair(ctx context.Context, user *db.User) (*Token, error) {
+type RefreshTokenClaims struct {
+	UserID int `json:"userID"`
+	jwt.RegisteredClaims
+}
+
+func (s *Service) generateAccessToken(ctx context.Context, user *db.User) (*Token, error) {
 	accessAuthUuid := uuid.New()
 	accessTokenClaims := &TokenClaims{
 		UserID:   user.UserID,
@@ -126,32 +163,12 @@ func (s *Service) generateTokenPair(ctx context.Context, user *db.User) (*Token,
 		return nil, err
 	}
 
-	refreshAuthUuid := uuid.New()
-	refreshTokenClaims := &TokenClaims{
-		UserID:   user.UserID,
-		AuthUUID: refreshAuthUuid.String(),
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
-		},
-	}
-
-	refreshToken, err := s.generateToken(ctx, refreshTokenClaims)
-	if err != nil {
-		return nil, err
-	}
-
 	t := &Token{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
+		AccessToken: accessToken,
 	}
 
 	userToken := &db.UserToken{UserID: user.UserID, AuthUUID: accessAuthUuid.String(), Type: db.AccessTokenType}
 	if _, err := s.db.SaveUserToken(ctx, userToken); err != nil {
-		return nil, err
-	}
-
-	userRefreshToken := &db.UserToken{UserID: user.UserID, AuthUUID: refreshAuthUuid.String(), Type: db.RefreshType}
-	if _, err := s.db.SaveUserToken(ctx, userRefreshToken); err != nil {
 		return nil, err
 	}
 
@@ -168,6 +185,72 @@ func (s *Service) generateToken(ctx context.Context, claim jwt.Claims) (string, 
 	}
 
 	return tokenString, nil
+}
+
+func (s *Service) generateRefreshToken(ctx context.Context, user *db.User) (string, error) {
+	refreshTokenClaims := &TokenClaims{
+		UserID: user.UserID,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+		},
+	}
+
+	refreshToken, err := s.generateToken(ctx, refreshTokenClaims)
+	if err != nil {
+		return "", err
+	}
+
+	token := &db.RefreshToken{
+		Token:  refreshToken,
+		UserID: user.UserID,
+	}
+
+	id, err := s.db.SaveRefreshToken(ctx, token)
+	if err != nil {
+		return "", err
+	}
+
+	return encryptTokenID(id, s.encryptionKey)
+}
+
+var (
+	encryptionBytes = []byte{99, 46, 57, 24, 84, 35, 25, 72, 87, 35, 88, 98, 66, 32, 14, 05}
+)
+
+func encryptTokenID(tokenID int, encryptionKey []byte) (string, error) {
+	tokenIDStr := strconv.Itoa(tokenID)
+
+	block, err := aes.NewCipher(encryptionKey)
+	if err != nil {
+		fmt.Printf("err: %v\n", err)
+		return "", golactus.NewError(http.StatusInternalServerError, "Failed to encrypt token")
+	}
+
+	plainText := []byte(tokenIDStr)
+	cfb := cipher.NewCFBEncrypter(block, encryptionBytes)
+
+	cipherText := make([]byte, len(plainText))
+	cfb.XORKeyStream(cipherText, plainText)
+
+	return base64.StdEncoding.EncodeToString(cipherText), nil
+}
+
+func decryptTokenID(text string, encryptionKey []byte) (int, error) {
+	data, err := base64.StdEncoding.DecodeString(text)
+	if err != nil {
+		return 0, golactus.NewError(http.StatusInternalServerError, "Failed to decode token")
+	}
+
+	block, err := aes.NewCipher(encryptionKey)
+	if err != nil {
+		return 0, err
+	}
+
+	cfb := cipher.NewCFBDecrypter(block, encryptionBytes)
+	plainText := make([]byte, len(data))
+	cfb.XORKeyStream(plainText, data)
+
+	return strconv.Atoi(string(plainText))
 }
 
 func hashPassword(password string) (string, error) {

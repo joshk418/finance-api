@@ -19,12 +19,13 @@ type Config struct {
 	Host           string
 	Port           string
 	JwtKey         string
+	EncryptionKey  string
 	DbConnection   string
 	RequestTimeout int
 }
 
 func New(cfg *Config) (*Service, error) {
-	a, err := app.New(cfg.DbConnection, cfg.JwtKey)
+	a, err := app.New(cfg.DbConnection, cfg.JwtKey, cfg.EncryptionKey)
 	if err != nil {
 		return nil, err
 	}
