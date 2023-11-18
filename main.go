@@ -23,7 +23,6 @@ func main() {
 }
 
 func startServer() error {
-
 	cfg, err := readConfig()
 	if err != nil {
 		return err
