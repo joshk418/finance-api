@@ -5,8 +5,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"encoding/base64"
-	"finance-api/src/db"
-	"fmt"
+	"finance-api/db"
 	"net/http"
 	"strconv"
 	"strings"
@@ -222,7 +221,6 @@ func encryptTokenID(tokenID int, encryptionKey []byte) (string, error) {
 
 	block, err := aes.NewCipher(encryptionKey)
 	if err != nil {
-		fmt.Printf("err: %v\n", err)
 		return "", golactus.NewError(http.StatusInternalServerError, "Failed to encrypt token")
 	}
 

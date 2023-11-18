@@ -19,12 +19,12 @@ type RefreshToken struct {
 }
 
 func (s *Service) RefreshTokenByID(ctx context.Context, refreshTokenID int) (*RefreshToken, error) {
-	row := s.db.QueryRowContext(ctx, "select "+
-		"refresh_token_id, "+
-		"token, "+
-		"user_id "+
-		"from refresh_tokens "+
-		"where refresh_token_id = $1",
+	row := s.db.QueryRowContext(ctx, `select
+			refresh_token_id,
+			token,
+			user_id
+		from refresh_tokens
+		where refresh_token_id = $1`,
 		refreshTokenID,
 	)
 
@@ -70,12 +70,12 @@ func (s *Service) SaveRefreshToken(ctx context.Context, refreshToken *RefreshTok
 }
 
 func (s *Service) insertRefreshToken(ctx context.Context, refreshToken *RefreshToken) (int, error) {
-	row := s.db.QueryRowContext(ctx, "insert into refresh_tokens ("+
-		"token, "+
-		"user_id, "+
-		"created_date "+
-		") values ($1, $2, $3)"+
-		"returning refresh_token_id",
+	row := s.db.QueryRowContext(ctx, `insert into refresh_tokens (
+			token, 
+			user_id, 
+			created_date 
+		) values ($1, $2, $3)
+		returning refresh_token_id`,
 		refreshToken.Token,
 		refreshToken.UserID,
 		time.Now(),
@@ -90,10 +90,10 @@ func (s *Service) insertRefreshToken(ctx context.Context, refreshToken *RefreshT
 }
 
 func (s *Service) updateRefreshToken(ctx context.Context, refreshToken *RefreshToken) error {
-	_, err := s.db.ExecContext(ctx, "update refresh_tokens set "+
-		"token = $1, "+
-		"modified_date = $2 "+
-		"where user_token_id = $2",
+	_, err := s.db.ExecContext(ctx, `update refresh_tokens set 
+			token = $1, 
+			modified_date = $2 
+		where user_token_id = $2`,
 		refreshToken.Token,
 		time.Now(),
 	)

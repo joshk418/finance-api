@@ -1,7 +1,7 @@
 package http
 
 import (
-	"finance-api/src/app"
+	"finance-api/app"
 
 	"github.com/joshk418/golactus"
 

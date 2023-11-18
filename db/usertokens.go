@@ -22,13 +22,13 @@ const (
 )
 
 func (s *Service) UserTokenByUserIDAndAuthUUID(ctx context.Context, userID int, uuid string) (*UserToken, error) {
-	row := s.db.QueryRowContext(ctx, "select "+
-		"user_token_id, "+
-		"user_id, "+
-		"auth_uuid, "+
-		"type "+
-		"from user_tokens "+
-		"where user_id = $1 and auth_uuid = $2",
+	row := s.db.QueryRowContext(ctx, `select 
+			user_token_id, 
+			user_id, 
+			auth_uuid, 
+			type 
+		from user_tokens 
+		where user_id = $1 and auth_uuid = $2`,
 		userID,
 		uuid,
 	)
@@ -52,13 +52,13 @@ func (s *Service) UserTokenByUserIDAndAuthUUID(ctx context.Context, userID int, 
 }
 
 func (s *Service) UserTokensByUserID(ctx context.Context, userID int) ([]*UserToken, error) {
-	rows, err := s.db.QueryContext(ctx, "select "+
-		"user_token_id, "+
-		"user_id, "+
-		"auth_uuid, "+
-		"type "+
-		"from user_tokens "+
-		"where user_id = $1 and auth_uuid = $2",
+	rows, err := s.db.QueryContext(ctx, `select 
+			user_token_id, 
+			user_id, 
+			auth_uuid, 
+			type 
+		from user_tokens 
+		where user_id = $1 and auth_uuid = $2`,
 		userID,
 	)
 	if err != nil {
@@ -112,12 +112,12 @@ func (s *Service) SaveUserToken(ctx context.Context, userToken *UserToken) (int,
 }
 
 func (s *Service) insertUserToken(ctx context.Context, userToken *UserToken) (int, error) {
-	row := s.db.QueryRowContext(ctx, "insert into user_tokens ("+
-		"user_id, "+
-		"auth_uuid, "+
-		"type "+
-		") values ($1, $2, $3)"+
-		"returning user_token_id",
+	row := s.db.QueryRowContext(ctx, `insert into user_tokens (
+			user_id,
+			auth_uuid, 
+			type 
+		) values ($1, $2, $3)
+		returning user_token_id`,
 		userToken.UserID,
 		userToken.AuthUUID,
 		userToken.Type,
@@ -132,9 +132,9 @@ func (s *Service) insertUserToken(ctx context.Context, userToken *UserToken) (in
 }
 
 func (s *Service) updateUserToken(ctx context.Context, userToken *UserToken) error {
-	_, err := s.db.ExecContext(ctx, "update user_tokens set "+
-		"auth_uuid = $1, "+
-		"where user_token_id = $2",
+	_, err := s.db.ExecContext(ctx, `update user_tokens set
+			auth_uuid = $1,
+		where user_token_id = $2`,
 		userToken.AuthUUID,
 		userToken.UserTokenID,
 	)

@@ -1,7 +1,7 @@
 package app
 
 import (
-	"finance-api/src/db"
+	"finance-api/db"
 )
 
 type Service struct {

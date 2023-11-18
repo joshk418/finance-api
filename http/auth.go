@@ -2,7 +2,7 @@ package http
 
 import (
 	"encoding/json"
-	"finance-api/src/db"
+	"finance-api/db"
 	"net/http"
 
 	"github.com/joshk418/golactus"

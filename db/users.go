@@ -43,16 +43,16 @@ func (u *User) Validate() error {
 }
 
 func (s *Service) UserByID(ctx context.Context, id int) (*User, error) {
-	row := s.db.QueryRowContext(ctx, "select "+
-		"user_id, "+
-		"first_name, "+
-		"last_name, "+
-		"email_address, "+
-		"created_date, "+
-		"modified_date, "+
-		"deactivated_date, "+
-		"state "+
-		"from users where user_id = $1 and state = 1",
+	row := s.db.QueryRowContext(ctx, `select 
+			user_id, 
+			first_name, 
+			last_name, 
+			email_address, 
+			created_date, 
+			modified_date, 
+			deactivated_date, 
+			state 
+		from users where user_id = $1 and state = 1`,
 		id,
 	)
 
@@ -79,16 +79,16 @@ func (s *Service) UserByID(ctx context.Context, id int) (*User, error) {
 }
 
 func (s *Service) UserByEmailAddress(ctx context.Context, emailAddress string) (*User, error) {
-	row := s.db.QueryRowContext(ctx, "select "+
-		"user_id, "+
-		"first_name, "+
-		"last_name, "+
-		"email_address, "+
-		"created_date, "+
-		"modified_date, "+
-		"deactivated_date, "+
-		"state "+
-		"from users where lower(email_address) = $1 and state = 1",
+	row := s.db.QueryRowContext(ctx, `select
+			user_id, 
+			first_name, 
+			last_name, 
+			email_address, 
+			created_date, 
+			modified_date, 
+			deactivated_date, 
+			state 
+		from users where lower(email_address) = $1 and state = 1`,
 		strings.ToLower(emailAddress),
 	)
 
@@ -115,9 +115,9 @@ func (s *Service) UserByEmailAddress(ctx context.Context, emailAddress string) (
 }
 
 func (s *Service) UserPasswordHashByEmailAddress(ctx context.Context, emailAddress string) (string, error) {
-	row := s.db.QueryRowContext(ctx, "select "+
-		"password "+
-		"from users where lower(email_address) = $1 and state = 1",
+	row := s.db.QueryRowContext(ctx, `select
+			password 
+		from users where lower(email_address) = $1 and state = 1`,
 		strings.ToLower(emailAddress),
 	)
 
@@ -142,15 +142,15 @@ func (s *Service) SaveUser(ctx context.Context, user *User) (int, error) {
 }
 
 func (s *Service) insertUser(ctx context.Context, user *User) (int, error) {
-	row := s.db.QueryRowContext(ctx, "insert into users ("+
-		"first_name, "+
-		"last_name, "+
-		"email_address, "+
-		"password, "+
-		"created_date, "+
-		"state "+
-		") values ($1, $2, $3, $4, $5, $6)"+
-		"returning user_id",
+	row := s.db.QueryRowContext(ctx, `insert into users (
+			first_name, 
+			last_name, 
+			email_address, 
+			password, 
+			created_date, 
+			state 
+		) values ($1, $2, $3, $4, $5, $6)
+		returning user_id`,
 		user.FirstName,
 		user.LastName,
 		user.EmailAddress,
@@ -168,14 +168,14 @@ func (s *Service) insertUser(ctx context.Context, user *User) (int, error) {
 }
 
 func (s *Service) updateUser(ctx context.Context, user *User) error {
-	_, err := s.db.ExecContext(ctx, "update users set "+
-		"first_name = $1, "+
-		"last_name = $2, "+
-		"email_address = $3, "+
-		"modified_date = $4, "+
-		"deactivated_date = $5, "+
-		"state = $6 "+
-		"where user_id = $7",
+	_, err := s.db.ExecContext(ctx, `update users set
+			first_name = $1,
+			last_name = $2, 
+			email_address = $3,
+			modified_date = $4,
+			deactivated_date = $5,
+			state = $6
+		where user_id = $7`,
 		user.FirstName,
 		user.LastName,
 		user.EmailAddress,

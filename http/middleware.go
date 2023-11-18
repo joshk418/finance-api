@@ -3,7 +3,7 @@ package http
 import (
 	"context"
 	"errors"
-	"finance-api/src/app"
+	"finance-api/app"
 	"net/http"
 	"strings"
 

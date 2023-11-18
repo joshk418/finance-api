@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	"finance-api/src/db"
+	"finance-api/db"
 )
 
 func (s *Service) UserTokenByUserIDAndAuthUUID(ctx context.Context, userID int, uuid string) (*db.UserToken, error) {

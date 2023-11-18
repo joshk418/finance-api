@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	"finance-api/src/db"
+	"finance-api/db"
 	"time"
 )
 

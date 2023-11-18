@@ -1,7 +1,7 @@
 package main
 
 import (
-	httpd "finance-api/src/http"
+	httpd "finance-api/http"
 	"flag"
 	"os"
 	"strings"
